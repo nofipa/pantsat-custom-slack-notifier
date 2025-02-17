@@ -91,19 +91,23 @@ function custom_send_order_notification($order_id, $demo = FALSE)
         $order_status = $order_data['status'];
         $order_items = $order->get_items();
 
+        // Get billing details
         $billing_first_name = $order_data['billing']['first_name'];
         $billing_last_name = $order_data['billing']['last_name'];
         $billing_email = $order_data['billing']['email'];
         $billing_phone = $order_data['billing']['phone'];
 
+        // Add shipping method information
         $shipping_method = $order->get_shipping_method();
 
+        // Construct the Slack message
         $message = "🎉🎉 New WooCommerce Order #$order_number 🎉🎉\n\n";
 
         $message .= "*Billing Name:* $billing_first_name $billing_last_name\n";
         $message .= "*Billing Email:* $billing_email\n";
         $message .= "*Billing Phone:* $billing_phone\n\n";
 
+        // Add shipping method information
         $message .= "*Shipping Method:* $shipping_method\n\n";
 
         $message .= "*Order Status:* $order_status\n";
@@ -118,6 +122,7 @@ function custom_send_order_notification($order_id, $demo = FALSE)
             $item_single_price = $item->get_total() / $item_quantity;
             $item_single_price_formatted = number_format($item_single_price, 2, ',', '.') . "DKK";
             
+            // Fixed attribute handling for custom attributes
             $department = '';
             try {
                 $product_attributes = $product->get_attributes();
@@ -134,7 +139,7 @@ function custom_send_order_notification($order_id, $demo = FALSE)
                 error_log('Error getting department: ' . $e->getMessage());
             }
 
-            $message .= "• $product_name ($department) af $item_single_price_formatted\n";
+            $message .= "• $item_quantity x $product_name ($department) af $item_single_price_formatted\n";
         }
         $message .= "Total repo: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
 
