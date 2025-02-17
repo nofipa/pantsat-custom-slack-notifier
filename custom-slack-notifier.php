@@ -158,7 +158,7 @@ function custom_send_slack_notification($channel, $api_key, $message)
 
     // Set the message parameters
     $message_data = array(
-        'channel' => 'U04828SAE64',//$channel,
+        'channel' => $channel,
         'text' => $message
     );
 
