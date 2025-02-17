@@ -91,18 +91,20 @@ function custom_send_order_notification($order_id, $demo = FALSE)
         $order_status = $order_data['status'];
         $order_items = $order->get_items();
 
-        // Get billing details
         $billing_first_name = $order_data['billing']['first_name'];
         $billing_last_name = $order_data['billing']['last_name'];
         $billing_email = $order_data['billing']['email'];
         $billing_phone = $order_data['billing']['phone'];
 
-        // Construct the Slack message
+        $shipping_method = $order->get_shipping_method();
+
         $message = "🎉🎉 New WooCommerce Order #$order_number 🎉🎉\n\n";
 
         $message .= "*Billing Name:* $billing_first_name $billing_last_name\n";
         $message .= "*Billing Email:* $billing_email\n";
         $message .= "*Billing Phone:* $billing_phone\n\n";
+
+        $message .= "*Shipping Method:* $shipping_method\n\n";
 
         $message .= "*Order Status:* $order_status\n";
         $message .= "*Order Total:* " . number_format($order_total, 2, ',', '.') . " DKK \n\n";
@@ -115,11 +117,26 @@ function custom_send_order_notification($order_id, $demo = FALSE)
             $item_total = number_format($item->get_total(), 2, ',', '.') . " DKK";
             $item_single_price = $item->get_total() / $item_quantity;
             $item_single_price_formatted = number_format($item_single_price, 2, ',', '.') . "DKK";
+            
+            $department = '';
+            try {
+                $product_attributes = $product->get_attributes();
+                if (isset($product_attributes['department']) && is_object($product_attributes['department'])) {
+                    $department = $product_attributes['department']->get_options()[0] ?? '';
+                } else {
+                    // Get raw attributes as they might be custom attributes
+                    $raw_attributes = $product->get_data()['attributes'];
+                    if (isset($raw_attributes['department'])) {
+                        $department = $raw_attributes['department'];
+                    }
+                }
+            } catch (Exception $e) {
+                error_log('Error getting department: ' . $e->getMessage());
+            }
 
-
-            $message .= "• $item_quantity x _ $product_name _ af $item_single_price_formatted - *samlet: $item_total*\n";
+            $message .= "• $product_name ($department) af $item_single_price_formatted\n";
         }
-        $message .= "Total: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
+        $message .= "Total repo: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
 
         // Add a link to the WooCommerce order page
         $order_edit_url = admin_url("post.php?post=$order_number&action=edit");
@@ -141,7 +158,7 @@ function custom_send_slack_notification($channel, $api_key, $message)
 
     // Set the message parameters
     $message_data = array(
-        'channel' => $channel,
+        'channel' => 'U04828SAE64',//$channel,
         'text' => $message
     );
 
@@ -173,7 +190,7 @@ function custom_send_slack_notification($channel, $api_key, $message)
     }
 }
 
-add_action('woocommerce_new_order', 'custom_send_order_notification', 1000);
+add_action('woocommerce_checkout_update_order_meta', 'custom_send_order_notification', 1000);
 
 /**
  * 
