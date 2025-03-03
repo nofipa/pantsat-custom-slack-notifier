@@ -139,9 +139,10 @@ function custom_send_order_notification($order_id, $demo = FALSE)
                 error_log('Error getting department: ' . $e->getMessage());
             }
 
-            $message .= "• $item_quantity x $product_name ($department) af $item_single_price_formatted\n";
+            $product_sku = $product->get_sku();
+            $message .= "• $item_quantity x $product_sku $product_name ($department) af $item_single_price_formatted\n";
         }
-        $message .= "Total repo: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
+        $message .= "Total: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
 
         // Add a link to the WooCommerce order page
         $order_edit_url = admin_url("post.php?post=$order_number&action=edit");
