@@ -196,7 +196,7 @@ function custom_send_slack_notification($channel, $api_key, $message)
     }
 }
 
-add_action('woocommerce_checkout_update_order_meta', 'custom_send_order_notification', 1000);
+add_action('woocommerce_payment_complete', 'custom_send_order_notification', 10, 1);
 
 /**
  * 
