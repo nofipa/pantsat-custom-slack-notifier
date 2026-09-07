@@ -54,8 +54,170 @@ function custom_woocommerce_order_notifications_settings_fields()
         'section_end' => array(
             'type' => 'sectionend',
             'id' => 'custom_slack_notifications_section_end'
+        ),
+        'tags_title' => array(
+            'name' => __('Tag by department', 'custom-woocommerce-order-notifications'),
+            'type' => 'title',
+            'desc' => __(
+                'Who gets tagged when an order contains an item from a given store.<br><br>'
+                . 'One department per line, in the form <code>department = member id</code>. '
+                . 'Separate several people with commas. Adding a new store is just a new line here — '
+                . 'no code change needed.<br><br>'
+                . 'Use Slack <strong>member IDs</strong> (e.g. <code>U01ABC2DEF</code>), not @names: open the '
+                . 'person\'s profile → three dots → "Copy member ID". A Slack user group works too, '
+                . 'written as <code>&lt;!subteam^S01ABC2DEF&gt;</code>.<br><br>'
+                . 'The department name is matched loosely (case and accents are ignored, so '
+                . '<code>kobenhavn</code> matches "København"). An order with items from several stores '
+                . 'tags everyone involved.',
+                'custom-woocommerce-order-notifications'
+            ),
+            'id' => 'custom_slack_notifications_tags_title'
+        ),
+        'department_tags' => array(
+            'name'    => __('Department → Slack', 'custom-woocommerce-order-notifications'),
+            'type'    => 'textarea',
+            'css'     => 'width: 100%; height: 340px; font-family: monospace;',
+            'desc'    => __('Add member IDs after the <code>=</code>, e.g. <code>aarhus = U02DEF3GHI</code>. Leave a department blank to use the fallback for it.', 'custom-woocommerce-order-notifications'),
+            'id'      => 'custom_slack_notifications_department_tags',
+            'default' => pantsat_slack_default_department_tags(),
+        ),
+        'tag_default' => array(
+            'name' => __('Fallback', 'custom-woocommerce-order-notifications'),
+            'type' => 'text',
+            'desc' => __('Tagged when an item has no department, or one that is not listed above. Leave empty for no tag.', 'custom-woocommerce-order-notifications'),
+            'id'   => 'custom_slack_notifications_tag_default'
+        ),
+        'tags_end' => array(
+            'type' => 'sectionend',
+            'id' => 'custom_slack_notifications_tags_end'
         )
     );
+}
+
+/**
+ * The department values our internal system sends, pre-filled into the settings
+ * box so only the member IDs need typing.
+ *
+ * This is a starting point, not a constraint: the box is free text, so a new
+ * department is handled by adding a line — no code change. Anything not listed
+ * falls back to the fallback tag.
+ */
+function pantsat_slack_default_department_tags()
+{
+    $departments = array(
+        'aarhus',
+        'copenhagen',
+        'odense',
+        'aalborg',
+        'esbjerg',
+        'vejle',
+        'koege',
+        'silkeborg',
+        'slagelse',
+        'hjoerring',
+        'kolding',
+        'hellerup',
+        'hoersholm',
+        'horsens',
+        'herlev',
+        'randers',
+    );
+
+    $width = max(array_map('strlen', $departments));
+    $lines = array();
+    foreach ($departments as $department) {
+        $lines[] = str_pad($department, $width) . ' = ';
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
+ * Parse the "department = member id" settings box into
+ * array( normalised department => array( member id, ... ) ).
+ *
+ * Blank lines and lines starting with # are ignored, so the box can be
+ * commented.
+ */
+function pantsat_slack_department_tag_map()
+{
+    $raw = (string) get_option('custom_slack_notifications_department_tags');
+    $map = array();
+
+    foreach (preg_split('/\r\n|\r|\n/', $raw) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') {
+            continue;
+        }
+        // Accept "=" or ":" as the separator; people reach for both.
+        $parts = preg_split('/\s*[=:]\s*/', $line, 2);
+        if (count($parts) < 2) {
+            continue;
+        }
+
+        $key = pantsat_slack_normalise_department($parts[0]);
+        if ($key === '') {
+            continue;
+        }
+
+        $ids = array_filter(array_map('trim', explode(',', $parts[1])), 'strlen');
+        if (!$ids) {
+            continue;
+        }
+
+        // Same department listed twice: merge rather than overwrite.
+        $map[$key] = isset($map[$key]) ? array_merge($map[$key], $ids) : $ids;
+    }
+
+    return $map;
+}
+
+/**
+ * Fold a department value into a comparable key.
+ *
+ * The attribute is free text and written inconsistently across products
+ * ("København", "Kobenhavn", "KBH ", "Aarhus C"), and whoever fills in the
+ * settings box will not match that spelling exactly either. Lowercasing and
+ * stripping accents and non-letters means both sides meet in the middle.
+ */
+function pantsat_slack_normalise_department($raw)
+{
+    $key = strtolower(trim((string) $raw));
+    if ($key === '') {
+        return '';
+    }
+
+    $key = strtr($key, array(
+        'ø' => 'o', 'æ' => 'ae', 'å' => 'a',
+        'ö' => 'o', 'ä' => 'a', 'ü' => 'u', 'é' => 'e', 'è' => 'e',
+    ));
+
+    // Drop anything that is not a letter or digit: "Aarhus C." and "aarhus-c"
+    // both become "aarhusc".
+    $key = preg_replace('/[^a-z0-9]/', '', $key);
+
+    return (string) $key;
+}
+
+/**
+ * Turn stored ids into Slack mention syntax.
+ *
+ * A member id (U01ABC2DEF) becomes <@U01ABC2DEF>, which is what actually
+ * notifies someone. Values already wrapped in <> — user groups, for example —
+ * are passed through untouched.
+ */
+function pantsat_slack_format_mentions($ids)
+{
+    $out = array();
+    foreach ((array) $ids as $id) {
+        $id = trim($id);
+        if ($id === '') {
+            continue;
+        }
+        $out[] = ($id[0] === '<' || $id[0] === '@') ? $id : '<@' . $id . '>';
+    }
+
+    return array_values(array_unique($out));
 }
 
 // Save the settings
@@ -114,6 +276,8 @@ function custom_send_order_notification($order_id, $demo = FALSE)
         $message .= "*Order Total:* " . number_format($order_total, 2, ',', '.') . " DKK \n\n";
 
         $message .= "*Order Items:*\n";
+        // Departments seen in this order, used to work out who to tag.
+        $order_departments = array();
         foreach ($order_items as $item) {
             $product = $item->get_product();
             $product_name = $product->get_name();
@@ -139,6 +303,8 @@ function custom_send_order_notification($order_id, $demo = FALSE)
                 error_log('Error getting department: ' . $e->getMessage());
             }
 
+            $order_departments[] = $department;
+
             $product_sku = $product->get_sku();
             $message .= "• $item_quantity x $product_sku $product_name ($department) af $item_single_price_formatted\n";
         }
@@ -147,6 +313,37 @@ function custom_send_order_notification($order_id, $demo = FALSE)
         // Add a link to the WooCommerce order page
         $order_edit_url = admin_url("post.php?post=$order_number&action=edit");
         $message .= "\n*Order Details:* <$order_edit_url|View Order Details>\n";
+
+        // Tag whoever covers the departments in this order. Sits above the
+        // header so the mention is the first thing visible in the channel.
+        $tag_map     = pantsat_slack_department_tag_map();
+        $mention_ids = array();
+        $unmatched   = false;
+
+        foreach (array_unique(array_filter(array_map('pantsat_slack_normalise_department', $order_departments), 'strlen')) as $dept_key) {
+            if (isset($tag_map[$dept_key])) {
+                $mention_ids = array_merge($mention_ids, $tag_map[$dept_key]);
+            } else {
+                $unmatched = true;
+            }
+        }
+
+        // An item with no department at all also counts as unmatched.
+        if (count($order_departments) !== count(array_filter($order_departments, 'strlen'))) {
+            $unmatched = true;
+        }
+
+        if ($unmatched || !$mention_ids) {
+            $fallback = (string) get_option('custom_slack_notifications_tag_default');
+            if ($fallback !== '') {
+                $mention_ids = array_merge($mention_ids, array_map('trim', explode(',', $fallback)));
+            }
+        }
+
+        $mentions = pantsat_slack_format_mentions($mention_ids);
+        if ($mentions) {
+            $message = implode(' ', $mentions) . "\n" . $message;
+        }
 
         if ($demo) {
             $message = "*---------------DEMO---------------*\n\n\n" . $message . "\n\n*---------------DEMO---------------*";
