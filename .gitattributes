@@ -1,0 +1,3 @@
+# Keep repo plumbing out of the release zip: it ships as the plugin folder.
+/.github          export-ignore
+/.gitattributes   export-ignore

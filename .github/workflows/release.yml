@@ -1,0 +1,37 @@
+name: Release
+
+# Tag a version and the plugin zip is built and attached to the release, so the
+# update checker in custom-slack-notifier.php can offer it on the Plugins screen.
+#
+#   git tag v1.2.0 && git push --tags
+#
+# The --prefix is what matters: it names the folder inside the zip after the
+# plugin slug. GitHub's own source archive names it after the branch, which
+# WordPress installs as a second, duplicate plugin.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the plugin zip
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          git archive --format=zip \
+            --prefix=pantsat-custom-slack-notifier/ \
+            "$GITHUB_REF_NAME" \
+            -o "pantsat-custom-slack-notifier-$version.zip"
+          unzip -l "pantsat-custom-slack-notifier-$version.zip" | head -20
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: pantsat-custom-slack-notifier-*.zip

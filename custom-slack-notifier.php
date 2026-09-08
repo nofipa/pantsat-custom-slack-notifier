@@ -2,9 +2,36 @@
 /*
 Plugin Name: Morten's custom order notifier
 Description: Notify slack channel when a new WooCommerce order is created.
-Version: 1.1.1
+Version: 1.2.0
 Author: Morten 🧙
 */
+
+/**
+ * Self-hosted updates: check this repo's GitHub releases so the plugin can be
+ * updated from the Plugins screen instead of a manual zip upload. Same pattern
+ * as mortens-cool-woocommerce-announcement-bar.
+ *
+ * The repo is private, so the checker needs a GitHub token with read access.
+ * Put it in wp-config.php:
+ *
+ *     define('PANTSAT_NOTIFIER_GH_TOKEN', 'ghp_...');
+ *
+ * If the repo is ever made public, drop the constant and the checker reads
+ * releases anonymously.
+ */
+require_once plugin_dir_path(__FILE__) . 'plugin-update-checker/plugin-update-checker.php';
+$pcsn_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+    'https://github.com/nofipa/pantsat-custom-slack-notifier/',
+    __FILE__,
+    'pantsat-custom-slack-notifier'
+);
+if (defined('PANTSAT_NOTIFIER_GH_TOKEN') && PANTSAT_NOTIFIER_GH_TOKEN) {
+    $pcsn_update_checker->setAuthentication(PANTSAT_NOTIFIER_GH_TOKEN);
+}
+// Update from the .zip attached to each release, so the folder name inside it is
+// the plugin slug. GitHub's own source archive is named after the branch, which
+// installs as a second, duplicate plugin.
+$pcsn_update_checker->getVcsApi()->enableReleaseAssets('/\.zip$/');
 
 /**
  * 
