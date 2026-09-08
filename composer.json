@@ -1,0 +1,13 @@
+{
+    "name": "nofipa/pantsat-custom-slack-notifier",
+    "description": "Notify a Slack channel when a WooCommerce order is paid.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4",
+        "yahnis-elsts/plugin-update-checker": "^5.7"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

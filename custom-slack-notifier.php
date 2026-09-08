@@ -19,19 +19,25 @@ Author: Morten 🧙
  * If the repo is ever made public, drop the constant and the checker reads
  * releases anonymously.
  */
-require_once plugin_dir_path(__FILE__) . 'plugin-update-checker/plugin-update-checker.php';
-$pcsn_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
-    'https://github.com/nofipa/pantsat-custom-slack-notifier/',
-    __FILE__,
-    'pantsat-custom-slack-notifier'
-);
-if (defined('PANTSAT_NOTIFIER_GH_TOKEN') && PANTSAT_NOTIFIER_GH_TOKEN) {
-    $pcsn_update_checker->setAuthentication(PANTSAT_NOTIFIER_GH_TOKEN);
+$pcsn_autoload = plugin_dir_path(__FILE__) . 'vendor/autoload.php';
+if (file_exists($pcsn_autoload)) {
+    // Only the release zip carries vendor/. A plain git clone does not, so the
+    // plugin still runs without updates rather than fataling.
+    require_once $pcsn_autoload;
+
+    $pcsn_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        'https://github.com/nofipa/pantsat-custom-slack-notifier/',
+        __FILE__,
+        'pantsat-custom-slack-notifier'
+    );
+    if (defined('PANTSAT_NOTIFIER_GH_TOKEN') && PANTSAT_NOTIFIER_GH_TOKEN) {
+        $pcsn_update_checker->setAuthentication(PANTSAT_NOTIFIER_GH_TOKEN);
+    }
+    // Update from the .zip attached to each release, so the folder name inside
+    // it is the plugin slug. GitHub's own source archive is named after the
+    // branch, which installs as a second, duplicate plugin.
+    $pcsn_update_checker->getVcsApi()->enableReleaseAssets('/\.zip$/');
 }
-// Update from the .zip attached to each release, so the folder name inside it is
-// the plugin slug. GitHub's own source archive is named after the branch, which
-// installs as a second, duplicate plugin.
-$pcsn_update_checker->getVcsApi()->enableReleaseAssets('/\.zip$/');
 
 /**
  * 
