@@ -2,7 +2,7 @@
 /*
 Plugin Name: Morten's custom order notifier
 Description: Notify slack channel when a new WooCommerce order is created.
-Version: 1.1.0
+Version: 1.1.1
 Author: Morten 🧙
 */
 
@@ -342,7 +342,13 @@ function custom_send_order_notification($order_id, $demo = FALSE)
 
         $mentions = pantsat_slack_format_mentions($mention_ids);
         if ($mentions) {
-            $message = implode(' ', $mentions) . "\n" . $message;
+            // A test must not page real people. Slack only notifies on the
+            // <@U...> link syntax, so in demo mode the same ids go out with the
+            // angle brackets stripped: you still see exactly who would have been
+            // tagged, as inert text.
+            $message = ($demo
+                ? 'Would tag: ' . str_replace(array('<', '>'), '', implode(' ', $mentions))
+                : implode(' ', $mentions)) . "\n" . $message;
         }
 
         if ($demo) {
