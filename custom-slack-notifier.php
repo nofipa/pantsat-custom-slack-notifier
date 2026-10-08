@@ -235,7 +235,13 @@ function custom_woocommerce_order_notifications_save_settings()
  */
 
 
-function custom_send_order_notification($order_id, $demo = FALSE)
+/**
+ * @param int    $order_id Order to announce.
+ * @param bool   $demo     Wrap the message in DEMO markers (test button).
+ * @param string $context  '' for a new order, 'reminder' for the chase-up on a
+ *                         bank transfer that still hasn't been paid.
+ */
+function custom_send_order_notification($order_id, $demo = FALSE, $context = '')
 {
     // Get the saved Slack settings
     $slack_channel = get_option('custom_slack_notifications_channel');
@@ -262,8 +268,17 @@ function custom_send_order_notification($order_id, $demo = FALSE)
         // Add shipping method information
         $shipping_method = $order->get_shipping_method();
 
-        // Construct the Slack message
-        $message = "🎉🎉 New WooCommerce Order #$order_number 🎉🎉\n\n";
+        // Construct the Slack message. Bank transfer orders are not paid yet,
+        // so they get a header that says so rather than a celebration.
+        $is_bank_transfer = ($order->get_payment_method() === 'bacs');
+        if ($context === 'reminder') {
+            $days    = (int) round((time() - $order->get_date_created()->getTimestamp()) / DAY_IN_SECONDS);
+            $message = "⏰ Påmindelse: ordre #$order_number afventer stadig bankoverførsel ($days dage) ⏰\n\n";
+        } elseif ($is_bank_transfer) {
+            $message = "🏦 Ny ordre #$order_number – afventer bankoverførsel 🏦\n\n";
+        } else {
+            $message = "🎉🎉 New WooCommerce Order #$order_number 🎉🎉\n\n";
+        }
 
         $message .= "*Billing Name:* $billing_first_name $billing_last_name\n";
         $message .= "*Billing Email:* $billing_email\n";
@@ -393,7 +408,103 @@ function custom_send_slack_notification($channel, $api_key, $message)
     }
 }
 
-add_action('woocommerce_payment_complete', 'custom_send_order_notification', 10, 1);
+/**
+ * Announce an order once, however it reaches us.
+ *
+ * Returns false if this order has already been sent to Slack, so an order that
+ * moves between statuses doesn't notify twice. The test button bypasses this on
+ * purpose — it calls custom_send_order_notification() directly.
+ */
+function custom_slack_claim_order($order)
+{
+    if (!$order) {
+        return false;
+    }
+    if ($order->get_meta('_slack_notified')) {
+        return false;
+    }
+
+    $order->update_meta_data('_slack_notified', time());
+    $order->save();
+
+    return true;
+}
+
+add_action('woocommerce_payment_complete', 'custom_send_paid_order_notification', 10, 1);
+
+function custom_send_paid_order_notification($order_id)
+{
+    if (!custom_slack_claim_order(wc_get_order($order_id))) {
+        return;
+    }
+
+    custom_send_order_notification($order_id);
+}
+
+/**
+ * Bank transfer orders never fire woocommerce_payment_complete: BACS puts them
+ * straight on-hold and staff complete them by hand once the money arrives.
+ * Without this they would never reach Slack at all.
+ */
+add_action('woocommerce_order_status_on-hold', 'custom_send_bank_transfer_notification', 10, 1);
+
+function custom_send_bank_transfer_notification($order_id)
+{
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        return;
+    }
+
+    // Only bank transfer. An admin parking a card order on-hold is not news.
+    if ($order->get_payment_method() !== 'bacs') {
+        return;
+    }
+
+    if (!custom_slack_claim_order($order)) {
+        return;
+    }
+
+    custom_send_order_notification($order_id);
+
+    // Chase it up if the money still hasn't arrived. The handler re-checks the
+    // order, so nothing is sent if it has been paid or cancelled by then.
+    if (!wp_next_scheduled('pantsat_slack_bank_reminder', array($order_id))) {
+        wp_schedule_single_event(
+            time() + (CUSTOM_SLACK_BANK_REMINDER_DAYS * DAY_IN_SECONDS),
+            'pantsat_slack_bank_reminder',
+            array($order_id)
+        );
+    }
+}
+
+/**
+ * How long to wait before chasing an unpaid bank transfer, in days.
+ */
+if (!defined('CUSTOM_SLACK_BANK_REMINDER_DAYS')) {
+    define('CUSTOM_SLACK_BANK_REMINDER_DAYS', 3);
+}
+
+add_action('pantsat_slack_bank_reminder', 'custom_send_bank_transfer_reminder', 10, 1);
+
+/**
+ * Fires a few days after a bank transfer order was placed. Everything is
+ * re-checked at this point rather than trusted from when it was scheduled, so a
+ * paid, cancelled or deleted order simply produces nothing.
+ */
+function custom_send_bank_transfer_reminder($order_id)
+{
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        return;
+    }
+
+    // Still waiting on the same bank transfer?
+    if ($order->get_payment_method() !== 'bacs' || !$order->has_status('on-hold')) {
+        return;
+    }
+
+    custom_send_order_notification($order_id, FALSE, 'reminder');
+}
 
 /**
  * 
