@@ -1,0 +1,72 @@
+name: Build and release
+
+# Tagging a version builds the plugin zip and attaches it to the release, which
+# is what the update checker in custom-slack-notifier.php offers on the Plugins
+# screen:
+#
+#   git tag v1.2.0 && git push --tags
+#
+# The same build runs on every pull request, without publishing, so a change
+# that breaks the zip's shape fails here rather than on the shop.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+
+permissions:
+  contents: write
+
+env:
+  SLUG: pantsat-custom-slack-notifier
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the update checker
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Build the plugin zip
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            version="pr${{ github.event.number }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "ZIP=$SLUG-$version.zip" >> "$GITHUB_ENV"
+          mkdir -p "build/$SLUG"
+          rsync -a \
+            --exclude='.git' --exclude='.github' --exclude='.gitignore' \
+            --exclude='.gitattributes' --exclude='composer.json' \
+            --exclude='composer.lock' --exclude='build' --exclude='*.zip' \
+            ./ "build/$SLUG/"
+          (cd build && zip -qr "../$SLUG-$version.zip" "$SLUG")
+
+      # The folder name inside the zip is the whole point. WordPress identifies a
+      # plugin by it, so if this regresses the zip installs a second duplicate
+      # plugin instead of updating the real one.
+      - name: Check the zip installs as an update, not a duplicate
+        run: |
+          set -eu
+          top=$(unzip -Z1 "$ZIP" | cut -d/ -f1 | sort -u)
+          [ "$top" = "$SLUG" ] || { echo "expected one folder '$SLUG', got: $top"; exit 1; }
+          unzip -Z1 "$ZIP" | grep -q "^$SLUG/vendor/yahnis-elsts/plugin-update-checker/" \
+            || { echo "update checker missing from the zip"; exit 1; }
+          unzip -Z1 "$ZIP" | grep -q "^$SLUG/custom-slack-notifier.php$" \
+            || { echo "plugin file missing from the zip"; exit 1; }
+          echo "ok: single folder '$SLUG', update checker bundled"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zip
+          path: ${{ env.ZIP }}
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.ZIP }}

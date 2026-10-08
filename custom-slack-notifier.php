@@ -2,9 +2,33 @@
 /*
 Plugin Name: Morten's custom order notifier
 Description: Notify slack channel when a new WooCommerce order is created.
-Version: 1.0.4
+Version: 1.2.0
 Author: Morten 🧙
 */
+
+/**
+ * Self-hosted updates: check this repo's GitHub releases so the plugin can be
+ * updated from the Plugins screen instead of a manual zip upload. Same pattern
+ * as mortens-cool-woocommerce-announcement-bar.
+ *
+ * The repo is public, so this needs no token and nothing to rotate.
+ */
+$pcsn_autoload = plugin_dir_path(__FILE__) . 'vendor/autoload.php';
+if (file_exists($pcsn_autoload)) {
+    // Only the release zip carries vendor/. A plain git clone does not, so the
+    // plugin still runs without updates rather than fataling.
+    require_once $pcsn_autoload;
+
+    $pcsn_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        'https://github.com/nofipa/pantsat-custom-slack-notifier/',
+        __FILE__,
+        'pantsat-custom-slack-notifier'
+    );
+    // Update from the .zip attached to each release, so the folder name inside
+    // it is the plugin slug. GitHub's own source archive is named after the
+    // branch, which installs as a second, duplicate plugin.
+    $pcsn_update_checker->getVcsApi()->enableReleaseAssets('/\.zip$/');
+}
 
 /**
  * 
@@ -357,7 +381,13 @@ function custom_send_order_notification($order_id, $demo = FALSE, $context = '')
 
         $mentions = pantsat_slack_format_mentions($mention_ids);
         if ($mentions) {
-            $message = implode(' ', $mentions) . "\n" . $message;
+            // A test must not page real people. Slack only notifies on the
+            // <@U...> link syntax, so in demo mode the same ids go out with the
+            // angle brackets stripped: you still see exactly who would have been
+            // tagged, as inert text.
+            $message = ($demo
+                ? 'Would tag: ' . str_replace(array('<', '>'), '', implode(' ', $mentions))
+                : implode(' ', $mentions)) . "\n" . $message;
         }
 
         if ($demo) {
