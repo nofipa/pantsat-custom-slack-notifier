@@ -2,7 +2,7 @@
 /*
 Plugin Name: Morten's custom order notifier
 Description: Notify slack channel when a new WooCommerce order is created.
-Version: 1.2.0
+Version: 1.3.0
 Author: Morten 🧙
 */
 
