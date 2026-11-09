@@ -2,7 +2,7 @@
 /*
 Plugin Name: Morten's custom order notifier
 Description: Notify slack channel when a new WooCommerce order is created.
-Version: 1.3.0
+Version: 1.3.1
 Author: Morten 🧙
 */
 
@@ -314,9 +314,10 @@ function custom_send_order_notification($order_id, $demo = FALSE, $context = '')
         $message .= "*Order Status:* $order_status\n";
         $message .= "*Order Total:* " . number_format($order_total, 2, ',', '.') . " DKK \n\n";
 
-        $message .= "*Order Items:*\n";
         // Departments seen in this order, used to work out who to tag.
         $order_departments = array();
+        // Built separately so the department line can go above the items.
+        $items_message = '';
         foreach ($order_items as $item) {
             $product = $item->get_product();
             $product_name = $product->get_name();
@@ -345,8 +346,24 @@ function custom_send_order_notification($order_id, $demo = FALSE, $context = '')
             $order_departments[] = $department;
 
             $product_sku = $product->get_sku();
-            $message .= "• $item_quantity x $product_sku $product_name ($department) af $item_single_price_formatted\n";
+            $items_message .= "• $item_quantity x $product_sku $product_name ($department) af $item_single_price_formatted\n";
         }
+
+        // The department on its own bold line, so staff see which store packs
+        // the order without reading the item lines. Several stores are listed
+        // once each, in the order their items appear.
+        $department_names = array();
+        foreach ($order_departments as $department) {
+            $key = pantsat_slack_normalise_department($department);
+            if ($key !== '' && !isset($department_names[$key])) {
+                $department_names[$key] = ucfirst(trim($department));
+            }
+        }
+        if ($department_names) {
+            $message .= "*Department: " . implode(', ', $department_names) . "*\n\n";
+        }
+
+        $message .= "*Order Items:*\n" . $items_message;
         $message .= "Total: *" . number_format($order_total, 2, ',', '.') . " DKK*\n";
 
         // Add a link to the WooCommerce order page
