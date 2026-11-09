@@ -44,6 +44,7 @@ jobs:
             --exclude='.git' --exclude='.github' --exclude='.gitignore' \
             --exclude='.gitattributes' --exclude='composer.json' \
             --exclude='composer.lock' --exclude='build' --exclude='*.zip' \
+            --exclude='tests' \
             ./ "build/$SLUG/"
           (cd build && zip -qr "../$SLUG-$version.zip" "$SLUG")
 
